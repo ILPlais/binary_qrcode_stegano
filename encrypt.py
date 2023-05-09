@@ -5,6 +5,7 @@ import cv2
 import numpy as np
 from steganography import Steganography
 from PIL import Image
+from tqdm import tqdm
 
 # Command line options
 parser = argparse.ArgumentParser(
@@ -22,7 +23,8 @@ parser.add_argument("-o", "--output",
 	required = True,
 	help = "Video file where to save the encrypted version.")
 parser.add_argument("--verbose",
-	action = "store_true")
+	action = "store_true",
+	help = "Display informations messages.")
 args = parser.parse_args()
 
 # Set up the input binary file and video file
@@ -67,7 +69,7 @@ if args.verbose:
 
 qr_codes = []
 chunk_size = 200  # Adjust this value as necessary
-for i in range(0, len(binary_data), chunk_size):
+for i in tqdm(range(0, len(binary_data), chunk_size)):
 	chunk = binary_data[i:i + chunk_size]
 	qr_code = qrcode.QRCode(
 		version = 1,
@@ -97,7 +99,7 @@ video_out = cv2.VideoWriter(str(output_video_file), fourcc, fps, (frame_width, f
 # Iterate over the frames in the input video
 if args.verbose:
 	print("[INFO] Iterate over the frames in the input video…")
-for i in range(n_frames):
+for i in tqdm(range(n_frames)):
 	# Read in the next frame of the video
 	success, frame = video_cap.read()
 	if not success:
