@@ -1,0 +1,21 @@
+{
+	// Utilisez IntelliSense pour en savoir plus sur les attributs possibles.
+	// Pointez pour afficher la description des attributs existants.
+	// Pour plus d'informations, visitez : https://go.microsoft.com/fwlink/?linkid=830387
+	"version": "0.2.0",
+	"configurations": [
+		{
+			"name": "Python: Current File",
+			"type": "python",
+			"request": "launch",
+			"program": "${file}",
+			"args": [
+				"--video", "test/La vérité sur notre société-Mr Robot [tJaLHsPDuQ4].mp4",
+				"--binary", "test/free-software-song.ogg",
+				"--output", "test/output.mp4",
+				"--verbose"],
+			"console": "integratedTerminal",
+			"justMyCode": true
+		}
+	]
+}
