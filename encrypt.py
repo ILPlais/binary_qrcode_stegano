@@ -2,10 +2,9 @@ import argparse
 import pathlib
 import qrcode
 import cv2
-import stegano
 import numpy as np
+from steganography import Steganography
 from PIL import Image
-from stegano import lsb
 
 # Command line options
 parser = argparse.ArgumentParser(
@@ -73,7 +72,7 @@ for i in range(0, len(binary_data), chunk_size):
 	qr_code = qrcode.QRCode(
 		version = 1,
 		box_size = 10,
-		border=0)
+		border = 0)
 	qr_code.add_data(chunk)
 	qr_code.make(fit = True)
 	qr_codes.append(qr_code)
@@ -98,8 +97,7 @@ video_out = cv2.VideoWriter(str(output_video_file), fourcc, fps, (frame_width, f
 # Iterate over the frames in the input video
 if args.verbose:
 	print("[INFO] Iterate over the frames in the input video…")
-frame_count = 0
-while video_cap.isOpened():
+for i in range(n_frames):
 	# Read in the next frame of the video
 	success, frame = video_cap.read()
 	if not success:
@@ -125,7 +123,7 @@ while video_cap.isOpened():
 		qr_code_image_pil = qr_code_image.convert("RGB")
 
 		# Hide the QR code in the frame using steganography
-		steg_image = lsb.hide(image, qr_code_image_pil)
+		steg_image = Steganography().merge(image, qr_code_image_pil)
 
 		# Remove the QR code from the list
 		qr_codes.pop(j)
@@ -133,11 +131,10 @@ while video_cap.isOpened():
 	# Convert the image back to a numpy array and write the frame to the video
 	frame = np.array(steg_image)
 	video_out.write(frame)
-	frame_count += 1
 
 if args.verbose:
 	# Print the number of frames written to the output video
-	print(f"[INFO] Number of frames in output video: {frame_count}.")
+	print(f"[INFO] Number of frames in output video: {n_frames}.")
 
 # Release the videos files
 if args.verbose:
