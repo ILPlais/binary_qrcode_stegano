@@ -5,6 +5,7 @@ Uses QR codes to steganograph binary data in a video.
 
 ## Installation
 For Debian likes distributions you have to install the package `python3-opencv` to use the videos manipulation library.
+And install the packages `libzbar0` and `libzbar-dev` for decoding the DR codes.
 Then you have to install the requirements with the command:
 `$ pip3 install -r requirements.txt`
 
@@ -27,4 +28,16 @@ options:
 ```
 
 ### Decryption
-_⌚ Work in progress…_
+```
+usage: decrypt.py [-h] -v VIDEO -o OUTPUT [--verbose]
+
+Uses QR codes to steganograph binary data in a video file.
+
+options:
+  -h, --help            show this help message and exit
+  -v VIDEO, --video VIDEO
+                        Video containing the encrypted binary file.
+  -o OUTPUT, --output OUTPUT
+                        Path to extract the binary file.
+  --verbose             Display informations messages.
+```
