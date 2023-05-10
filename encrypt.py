@@ -89,6 +89,10 @@ frame_height = int(video_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 fps = int(video_cap.get(cv2.CAP_PROP_FPS))
 n_frames = int(video_cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
+# Check if there is enough frames in the video for all the QR codes
+if len(qr_codes) > n_frames:
+	raise ErrorNotEnoughFrames("[ERROR] There are not enough frames in the video to encrypt the entire binary file!")
+
 # Create the codec to save the video in the same format as the original
 if args.verbose:
 	print("[INFO] Create the codec to save the video in the same format as the original…")
