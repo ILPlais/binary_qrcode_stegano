@@ -1,7 +1,9 @@
-import encrypt
+import pytest
+import subprocess
 
-encrypt.embed_qr_codes_in_video(
-	'test/La vérité sur notre société-Mr Robot [tJaLHsPDuQ4].mp4',
-	'test/free-software-song.ogg',
-	'test/output.mp4'
-)
+subprocess.call([
+	"python3",
+	"encrypt.py",
+	"--video", "test/La vérité sur notre société-Mr Robot [tJaLHsPDuQ4].mp4",
+	"--binary", "test/free-software-song.ogg",
+	"--output", "test/output.mp4", "--verbose"])
