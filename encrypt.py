@@ -1,150 +1,188 @@
 import argparse
 import pathlib
-import qrcode
 import cv2
-import numpy as np
-from steganography import Steganography
-from PIL import Image
+import qrcode
+import base64
 from tqdm import tqdm
+from PIL import Image
+from steganography import Steganography
 
-# Command line options
-parser = argparse.ArgumentParser(
-	description = "Uses QR codes to steganograph binary data in a video file.")
-parser.add_argument("-v", "--video",
-	type = pathlib.Path,
-	required = True,
-	help = "Video to use for the encryption.")
-parser.add_argument("-b", "--binary",
-	type = pathlib.Path,
-	required = True,
-	help = "Binary to encrypt in the video file.")
-parser.add_argument("-o", "--output",
-	type = pathlib.Path,
-	required = True,
-	help = "Video file where to save the encrypted version.")
-parser.add_argument("--verbose",
-	action = "store_true",
-	help = "Display informations messages.")
-args = parser.parse_args()
+def encode_binary_in_base64(binary_file):
+	"""Encodes a binary file into Base 64.
 
-# Set up the input binary file and video file
-if not args.binary.is_file():
-	raise ErrorBinaryFile("[ERROR] The binary file does not exist!")
-else:
-	binary_file = args.binary
+	Parameters
+	----------
+	binary_file : bytes
+		Binary file to convert into Base 64.
+
+	Returns
+	-------
+	bytes
+		The binary file encoded in Base 64.
+	"""
+	with binary_file.open('rb') as f:
+		binary_data = f.read()
+
+	return base64.b64encode(binary_data)
+
+def embed_qr_code_in_frame(frame, qr_code):
+	"""Embeds a QR code in a video frame.
+
+	Parameters
+	----------
+	frame : numpy.ndarray
+		The video frame to embed the QR code in.
+	qr_code : qrcode.main.QRCode
+		The bytes of the QR code to embed in the video frame.
+	"""
+	# Convert the QR code bytes to a QR code image
+	qr_code_image = qr_code.make_image(
+		fill_color = "black",
+		back_color = "white")
+
+	# Find the center of the video frame
+	frame_center = (frame.shape[1] // 2, frame.shape[0] // 2)
+
+	# Create the QR code to steganograph in the frame
+	qr_code_image_pil = qr_code_image.convert("RGB")
+			
+	# Hide the QR code in the frame using steganography
+	frame_qr_code = frame[frame_center[0] - qr_code_image_pil.height // 2, frame_center[1] + qr_code_image_pil.width // 2]
+	frame_qr_code = Steganography().merge(frame_qr_code, qr_code_image_pil)
+
+def embed_qr_codes_in_video(video_file, binary_file, output_video_file):
+	"""Embeds QR codes in a video file.
+	
+	Parameters
+	----------
+	video_file : pathlib.Path
+		The path to the video file to use for embedding QR codes.
+	binary_file : pathlib.Path
+		The binary file to encrypt in the video file.
+	output_video_file : pathlib.Path
+		The path to the output video file where to save the encrypted version.
+	"""
+	# Open the video file
 	if args.verbose:
-		print(f"[INFO] We will use the binary file: '{binary_file}'.")
+		print("[INFO] Open the video file…")
+	video = cv2.VideoCapture(str(video_file))
 
-if not args.video.is_file():
-	raise ErrorVideoFile("[ERROR] The video to use for encryption does not exist!")
-else:
-	video_file = args.video
+	# Get the number of frames in the video
 	if args.verbose:
-		print(f"[INFO] We will use the video file: '{video_file}'.")
-
-if args.output.exists() and args.output.samefile(video_file):
-	raise ErrorOutputVideoFile("[ERROR] The video to use for encryption is the same as the output video!")
-else:
-	output_video_file = args.output
+		print("[INFO] Get the number of frames in the video…")
+	num_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
 	if args.verbose:
-		print(f"[INFO] We will output the encrypted file in the video: '{output_video_file}'.")
+		print(f"[INFO] There is {num_frames} frames in the video.")
 
-# Set up the QR code size and error correction level
-if args.verbose:
-	print("[INFO] Set up the QR code size and error correction level…")
+	# Create a list to store the QR codes
+	qr_codes = []
 
-qr_size = 200
-qr_error_correction = qrcode.constants.ERROR_CORRECT_L
+	# Encode the binary file into Base 64
+	if args.verbose:
+		print("[INFO] Encode the binary file into Base 64…")
+	base64_file = encode_binary_in_base64(binary_file)
 
-# Load the binary file
-if args.verbose:
-	print("[INFO] Load the binary file…")
+	# Set up the QR code size and error correction level
+	if args.verbose:
+		print("[INFO] Set up the QR code size and error correction level…")
 
-with binary_file.open('rb') as f:
-	binary_data = f.read()
+	qr_version = 40
+	qr_size = 200
+	qr_error_correction = qrcode.constants.ERROR_CORRECT_M
 
-# Convert the binary data into a list of QR codes
-if args.verbose:
-	print("[INFO] Convert the binary data into a list of QR codes…")
+	# Maximum of characters for QR code of the version
+	chunk_size = qrcode.make(
+		"Test",
+		version = qr_version,
+		border = 0,
+		error_correction = qr_error_correction).size[0] - 1
 
-qr_codes = []
-chunk_size = 200  # Adjust this value as necessary
-for i in tqdm(range(0, len(binary_data), chunk_size)):
-	chunk = binary_data[i:i + chunk_size]
-	qr_code = qrcode.QRCode(
-		version = 1,
-		box_size = 10,
-		border = 0)
-	qr_code.add_data(chunk)
-	qr_code.make(fit = True)
-	qr_codes.append(qr_code)
+	if args.verbose:
+		print(f"[INFO] They can be {chunk_size} ASCII characters by QR code.")
 
-# Open the video file and get these properties
-if args.verbose:
-	print("[INFO] Open the video file and get these properties…")
+	# Convert the binary data into a list of QR codes
+	if args.verbose:
+		print("[INFO] Convert the binary data into a list of QR codes…")
 
-video_cap = cv2.VideoCapture(str(video_file))
-frame_width = int(video_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-frame_height = int(video_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-fps = int(video_cap.get(cv2.CAP_PROP_FPS))
-n_frames = int(video_cap.get(cv2.CAP_PROP_FRAME_COUNT))
+	for i in tqdm(range(0, len(base64_file), chunk_size)):
+		chunk = base64_file[i:i + chunk_size]
+		qr_code = qrcode.QRCode(
+			version = qr_version,
+			box_size = qr_size,
+			error_correction = qr_error_correction,
+			border = 0)
+		qr_code.add_data(chunk)
+		qr_code.make(fit = True)
+		qr_codes.append(qr_code)
 
-# Check if there is enough frames in the video for all the QR codes
-if len(qr_codes) > n_frames:
-	raise ErrorNotEnoughFrames("[ERROR] There are not enough frames in the video to encrypt the entire binary file!")
+	# Check if there is enought frames in the video for all the QR codes
+	if len(qr_codes) > num_frames:
+		raise ErrorNumFrames("[ERROR] There is not enought frames in the video for all the file!")
 
-# Create the codec to save the video in the same format as the original
-if args.verbose:
-	print("[INFO] Create the codec to save the video in the same format as the original…")
+	# Embed the QR codes in the video frames
+	for i in tqdm(range(num_frames)):
+		embed_qr_code_in_frame(video.read()[1], qr_codes[i])
 
-fourcc = int(video_cap.get(cv2.CAP_PROP_FOURCC))
-video_out = cv2.VideoWriter(str(output_video_file), fourcc, fps, (frame_width, frame_height), True)
+	# Close the video file
+	video.release()
 
-# Iterate over the frames in the input video
-if args.verbose:
-	print("[INFO] Iterate over the frames in the input video…")
-for i in tqdm(range(n_frames)):
-	# Read in the next frame of the video
-	success, frame = video_cap.read()
-	if not success:
-		break
+	# Save the video file with the embedded QR codes
+	cv2.VideoWriter(
+		str(output_video_file),
+		cv2.VideoWriter_fourcc(*'mkv1'),
+		video.get(cv2.CAP_PROP_FPS),
+		(video.get(cv2.CAP_PROP_FRAME_WIDTH),
+		video.get(cv2.CAP_PROP_FRAME_HEIGHT)),
+		True,
+		cv2.CAP_WRITE_AUDIO,
+		cv2.CAP_WRITE_SUBTITLES).write(video.read()[0])
 
-	image = Image.fromarray(frame)
+if __name__ == "__main__":
+	# Command line options
+	parser = argparse.ArgumentParser(
+		description = "Uses QR codes to steganograph binary data in a video file.")
+	parser.add_argument("-v", "--video",
+		type = pathlib.Path,
+		required = True,
+		help = "Video to use for the encryption.")
+	parser.add_argument("-b", "--binary",
+		type = pathlib.Path,
+		required = True,
+		help = "Binary to encrypt in the video file.")
+	parser.add_argument("-o", "--output",
+		type = pathlib.Path,
+		required = True,
+		help = "Video file where to save the encrypted version.")
+	parser.add_argument("--verbose",
+		action = "store_true",
+		help = "Display informations messages.")
+	args = parser.parse_args()
 
-	# Calculate the number of QR codes that can be inserted into this frame
-	max_qr_codes = int((image.size[0] * image.size[1]) / (qr_size * qr_size))
+	# Set up the input binary file and video file
+	if not args.binary.is_file():
+		raise ErrorBinaryFile("[ERROR] The binary file does not exist!")
+	else:
+		binary_file = args.binary
+		if args.verbose:
+			print(f"[INFO] We will use the binary file: '{binary_file}'.")
 
-	# If there are no QR codes left to insert, continue to the next frame
-	if len(qr_codes) == 0:
-		continue
+	if not args.video.is_file():
+		raise ErrorVideoFile("[ERROR] The video to use for encryption does not exist!")
+	else:
+		video_file = args.video
+		if args.verbose:
+			print(f"[INFO] We will use the video file: '{video_file}'.")
 
-	# Insert as many QR codes as possible into this frame
-	n_qr_codes = min(max_qr_codes, len(qr_codes))
-	for j in range(n_qr_codes):
-		# Convert the QR code to an image
-		qr_code = qr_codes[j]
-		qr_code_image = qr_code.make_image(
-			fill_color = "black",
-			back_color = "white")
-		qr_code_image_pil = qr_code_image.convert("RGB")
+	if args.output.exists() and args.output.samefile(video_file):
+		raise ErrorOutputVideoFile("[ERROR] The video to use for encryption is the same as the output video!")
+	else:
+		output_video_file = args.output
+		if args.verbose:
+			print(f"[INFO] We will output the encrypted file in the video: '{output_video_file}'.")
 
-		# Hide the QR code in the frame using steganography
-		steg_image = Steganography().merge(image, qr_code_image_pil)
+	# Embed the QR codes in the video file
+	embed_qr_codes_in_video(video_file, binary_file, output_video_file)
 
-		# Remove the QR code from the list
-		qr_codes.pop(j)
-
-	# Convert the image back to a numpy array and write the frame to the video
-	frame = np.array(steg_image)
-	video_out.write(frame)
-
-if args.verbose:
-	# Print the number of frames written to the output video
-	print(f"[INFO] Number of frames in output video: {n_frames}.")
-
-# Release the videos files
-if args.verbose:
-	print("[INFO] Release the videos files…")
-
-video_cap.release()
-video_out.release()
+	# Print a message to indicate that the process is complete
+	if args.verbose:
+		print(f"[INFO] The process is complete. The output video file is '{output_video_file}'.")
