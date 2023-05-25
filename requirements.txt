@@ -1,3 +1,4 @@
 qrcode
 tqdm
+zbarlight
 opencv-python
