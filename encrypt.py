@@ -3,9 +3,10 @@ import pathlib
 import cv2
 import qrcode
 import base64
+import numpy
+import ffmpeg
 from tqdm import tqdm
-from PIL import Image
-from steganography import Steganography
+from PIL import Image, ImageEnhance
 
 def encode_binary_in_base64(binary_file):
 	"""Encodes a binary file into Base 64.
@@ -20,12 +21,13 @@ def encode_binary_in_base64(binary_file):
 	bytes
 		The binary file encoded in Base 64.
 	"""
+
 	with binary_file.open('rb') as f:
 		binary_data = f.read()
 
 	return base64.b64encode(binary_data)
 
-def embed_qr_code_in_frame(frame, qr_code):
+def embed_qr_code_in_frame(frame: numpy.ndarray, qr_code: qrcode.main.QRCode) -> numpy.ndarray:
 	"""Embeds a QR code in a video frame.
 
 	Parameters
@@ -34,25 +36,88 @@ def embed_qr_code_in_frame(frame, qr_code):
 		The video frame to embed the QR code in.
 	qr_code : qrcode.main.QRCode
 		The bytes of the QR code to embed in the video frame.
+
+	Returns
+	-------
+	numpy.ndarray
+		The frame to add to the output video.
 	"""
+
 	# Convert the QR code bytes to a QR code image
 	qr_code_image = qr_code.make_image(
 		fill_color = "black",
 		back_color = "white")
 
-	# Find the center of the video frame
-	frame_center = (frame.shape[1] // 2, frame.shape[0] // 2)
+	# Create the QR code to hide in the frame
+	qr_code_image_pil = qr_code_image.convert("RGBA")
 
-	# Create the QR code to steganograph in the frame
-	qr_code_image_pil = qr_code_image.convert("RGB")
-			
-	# Hide the QR code in the frame using steganography
-	frame_qr_code = frame[frame_center[0] - qr_code_image_pil.height // 2, frame_center[1] + qr_code_image_pil.width // 2]
-	frame_qr_code = Steganography().merge(frame_qr_code, qr_code_image_pil)
+	# Set the alpha channel of the QR code to 25%
+	qr_code_image_pil.putalpha(32)	
 
-def embed_qr_codes_in_video(video_file, binary_file, output_video_file):
+	# Get the dimensions of the frame
+	frame_height, frame_width, _ = frame.shape
+
+	# Resize the QR code to fit the frame
+	if frame_width > frame_height:
+		qr_code_image_pil = qr_code_image_pil.resize((frame_height, frame_height), Image.Resampling.LANCZOS)
+	else:
+		qr_code_image_pil = qr_code_image_pil.resize((frame_width, frame_width), Image.Resampling.LANCZOS)
+
+	# Calculate the center of the frame
+	center = (frame_width // 2 - qr_code_image_pil.width // 2, frame_height // 2 - qr_code_image_pil.height // 2)
+
+	# Convert the frame to a PIL image
+	frame_pil = Image.fromarray(frame)
+
+	# Paste the QR code image in the middle of the frame image
+	frame_pil.paste(qr_code_image_pil, center, qr_code_image_pil)
+
+	return numpy.array(frame_pil)
+
+def copy_audio_and_metadata_to_output(video_file: pathlib.Path, output_video_file: pathlib.Path):
+	"""Copy the audio tracks, subtitles, and metadata from a video file to the Matroska output video.
+
+	Parameters
+	----------
+	video_file : pathlib.Path
+		The path to the video file to use for embedding QR codes.
+	output_video_file : pathlib.Path
+		The path to the output video file where to save the encrypted version.
+	"""
+	# Create an FFmpeg subprocess
+	if args.verbose:
+		print("[INFO] Create an FFmpeg subprocess…")
+	ffmpeg_process = ffmpeg.input(str(video_file))
+
+	# Copy the audio tracks from the input video file to the output Matroska video file
+	if args.verbose:
+		print("[INFO] Copy the audio tracks from the input video file to the output Matroska video file…")
+	ffmpeg_process.output(str(output_video_file), map = ['a:0'])
+
+	# Copy the subtitles from the input video file to the output Matroska video file
+	if args.verbose:
+		print("[INFO] Copy the subtitles from the input video file to the output Matroska video file…")
+	ffmpeg_process.output(str(output_video_file), map = ['s:0'])
+
+	# Copy the metadata from the input video file to the output Matroska video file
+	if args.verbose:
+		print("[INFO] Copy the metadata from the input video file to the output Matroska video file…")
+	ffmpeg_process.output(str(output_video_file), map_metadata = True)
+
+	# Start the FFmpeg subprocess
+	if args.verbose:
+		print("[INFO] Start the FFmpeg subprocess…")
+	ffmpeg_process.run()
+
+	# Check if the FFmpeg subprocess was successful
+	if ffmpeg_process.returncode == 0 and args.verbose:
+		print("[INFO] The FFmpeg subprocess was successful.")
+	else:
+		raise ErrorFFmpeg("[ERROR] The FFmpeg subprocess failed!")
+
+def embed_qr_codes_in_video(video_file: pathlib.Path, binary_file: pathlib.Path, output_video_file: pathlib.Path):
 	"""Embeds QR codes in a video file.
-	
+
 	Parameters
 	----------
 	video_file : pathlib.Path
@@ -62,20 +127,21 @@ def embed_qr_codes_in_video(video_file, binary_file, output_video_file):
 	output_video_file : pathlib.Path
 		The path to the output video file where to save the encrypted version.
 	"""
-	# Open the video file
+
+	# Open the source video file
 	if args.verbose:
-		print("[INFO] Open the video file…")
-	video = cv2.VideoCapture(str(video_file))
+		print("[INFO] Open the source video file…")
+	video_cap = cv2.VideoCapture(str(video_file))
+	frame_width = int(video_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+	frame_height = int(video_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+	fps = int(video_cap.get(cv2.CAP_PROP_FPS))
 
 	# Get the number of frames in the video
 	if args.verbose:
 		print("[INFO] Get the number of frames in the video…")
-	num_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
+	num_frames = int(video_cap.get(cv2.CAP_PROP_FRAME_COUNT))
 	if args.verbose:
 		print(f"[INFO] There is {num_frames} frames in the video.")
-
-	# Create a list to store the QR codes
-	qr_codes = []
 
 	# Encode the binary file into Base 64
 	if args.verbose:
@@ -87,7 +153,6 @@ def embed_qr_codes_in_video(video_file, binary_file, output_video_file):
 		print("[INFO] Set up the QR code size and error correction level…")
 
 	qr_version = 40
-	qr_size = 200
 	qr_error_correction = qrcode.constants.ERROR_CORRECT_M
 
 	# Maximum of characters for QR code of the version
@@ -104,11 +169,13 @@ def embed_qr_codes_in_video(video_file, binary_file, output_video_file):
 	if args.verbose:
 		print("[INFO] Convert the binary data into a list of QR codes…")
 
+	# Create a list to store the QR codes
+	qr_codes = []
+
 	for i in tqdm(range(0, len(base64_file), chunk_size)):
 		chunk = base64_file[i:i + chunk_size]
 		qr_code = qrcode.QRCode(
 			version = qr_version,
-			box_size = qr_size,
 			error_correction = qr_error_correction,
 			border = 0)
 		qr_code.add_data(chunk)
@@ -119,23 +186,38 @@ def embed_qr_codes_in_video(video_file, binary_file, output_video_file):
 	if len(qr_codes) > num_frames:
 		raise ErrorNumFrames("[ERROR] There is not enought frames in the video for all the file!")
 
+	# Create the codec to save the video in the same format as the original
+	if args.verbose:
+		print("[INFO] Create the codec to save the video in the same format as the original…")
+
+	fourcc = int(video_cap.get(cv2.CAP_PROP_FOURCC))
+	video_out = cv2.VideoWriter(str(output_video_file), fourcc, fps, (frame_width, frame_height), True)		
+
 	# Embed the QR codes in the video frames
+	if args.verbose:
+		print("[INFO] Embed the QR codes in the video frames…")
+
 	for i in tqdm(range(num_frames)):
-		embed_qr_code_in_frame(video.read()[1], qr_codes[i])
+		# Read in the next frame of the video
+		success, frame = video_cap.read()
+		if not success:
+			break
 
-	# Close the video file
-	video.release()
+		if i < len(qr_codes):
+			modified_frame = embed_qr_code_in_frame(frame, qr_codes[i])
+			video_out.write(modified_frame)
+		else:
+			video_out.write(frame)
 
-	# Save the video file with the embedded QR codes
-	cv2.VideoWriter(
-		str(output_video_file),
-		cv2.VideoWriter_fourcc(*'mkv1'),
-		video.get(cv2.CAP_PROP_FPS),
-		(video.get(cv2.CAP_PROP_FRAME_WIDTH),
-		video.get(cv2.CAP_PROP_FRAME_HEIGHT)),
-		True,
-		cv2.CAP_WRITE_AUDIO,
-		cv2.CAP_WRITE_SUBTITLES).write(video.read()[0])
+	# Close the video files
+	if args.verbose:
+		print("[INFO] Close the video files…")
+
+	video_cap.release()
+	video_out.release()
+
+	# Copy the rest of the source video to the output video
+	# TODO: copy_audio_and_metadata_to_output(video_file, output_video_file)
 
 if __name__ == "__main__":
 	# Command line options
@@ -152,7 +234,7 @@ if __name__ == "__main__":
 	parser.add_argument("-o", "--output",
 		type = pathlib.Path,
 		required = True,
-		help = "Video file where to save the encrypted version.")
+		help = "Video file where to save the encrypted version (must be a Matroska Multimedia Container).")
 	parser.add_argument("--verbose",
 		action = "store_true",
 		help = "Display informations messages.")
@@ -177,6 +259,10 @@ if __name__ == "__main__":
 		raise ErrorOutputVideoFile("[ERROR] The video to use for encryption is the same as the output video!")
 	else:
 		output_video_file = args.output
+
+		if output_video_file.suffix != ".mkv":
+			output_video_file = output_video_file.with_suffix(".mkv")
+
 		if args.verbose:
 			print(f"[INFO] We will output the encrypted file in the video: '{output_video_file}'.")
 

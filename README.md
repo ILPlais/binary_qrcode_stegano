@@ -23,7 +23,7 @@ options:
   -b BINARY, --binary BINARY
                         Binary to encrypt in the video file.
   -o OUTPUT, --output OUTPUT
-                        Video file where to save the encrypted version.
+                        Video file where to save the encrypted version (must be a Matroska Multimedia Container).
   --verbose             Display informations messages.
 ```
 

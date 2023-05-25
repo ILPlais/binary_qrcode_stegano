@@ -1,4 +1,7 @@
 qrcode
+Pillow
 tqdm
 zbarlight
 opencv-python
+moviepy
+ffmpeg-python
