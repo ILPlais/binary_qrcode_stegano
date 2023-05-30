@@ -84,35 +84,32 @@ def copy_audio_and_metadata_to_output(video_file: pathlib.Path, output_video_fil
 	output_video_file : pathlib.Path
 		The path to the output video file where to save the encrypted version.
 	"""
-	# Create an FFmpeg subprocess
+	# Create an FFmpeg input stream from the video file
 	if args.verbose:
-		print("[INFO] Create an FFmpeg subprocess…")
-	ffmpeg_process = ffmpeg.input(str(video_file))
+		print("[INFO] Create an FFmpeg input stream from the video file…")
+	input_stream = ffmpeg.input(str(video_file))
 
-	# Copy the audio tracks from the input video file to the output Matroska video file
+	# Create an FFmpeg output stream for the output video file
 	if args.verbose:
-		print("[INFO] Copy the audio tracks from the input video file to the output Matroska video file…")
-	ffmpeg_process.output(str(output_video_file), map = ['a:0'])
-
-	# Copy the subtitles from the input video file to the output Matroska video file
-	if args.verbose:
-		print("[INFO] Copy the subtitles from the input video file to the output Matroska video file…")
-	ffmpeg_process.output(str(output_video_file), map = ['s:0'])
-
-	# Copy the metadata from the input video file to the output Matroska video file
-	if args.verbose:
-		print("[INFO] Copy the metadata from the input video file to the output Matroska video file…")
-	ffmpeg_process.output(str(output_video_file), map_metadata = True)
+		print("[INFO] Create an FFmpeg output stream for the output video file…")
+	output_stream = ffmpeg.output(
+		input_stream,
+		str(output_video_file),
+		map = ["1:v", "0:a", "0:s"],	# Map streams (audio, subtitles) from the input file
+		c = "copy",										# Copy all codecs without re-encoding
+		map_metadata = 0,							# Copy metadata from the input file
+		y = True											# Overwrite output file without asking for confirmation
+	)
 
 	# Start the FFmpeg subprocess
-	if args.verbose:
-		print("[INFO] Start the FFmpeg subprocess…")
-	ffmpeg_process.run()
-
-	# Check if the FFmpeg subprocess was successful
-	if ffmpeg_process.returncode == 0 and args.verbose:
-		print("[INFO] The FFmpeg subprocess was successful.")
-	else:
+	try:
+		if args.verbose:
+			print("[INFO] Start the FFmpeg subprocess…")
+		ffmpeg.run(output_stream)
+		if args.verbose:
+			print("[INFO] The FFmpeg subprocess was successful.")
+	except ffmpeg.Error as e:
+		print(f"[ERROR] FFmpeg error: {e.stderr.decode()}")
 		raise ErrorFFmpeg("[ERROR] The FFmpeg subprocess failed!")
 
 def embed_qr_codes_in_video(video_file: pathlib.Path, binary_file: pathlib.Path, output_video_file: pathlib.Path):
@@ -217,7 +214,7 @@ def embed_qr_codes_in_video(video_file: pathlib.Path, binary_file: pathlib.Path,
 	video_out.release()
 
 	# Copy the rest of the source video to the output video
-	# TODO: copy_audio_and_metadata_to_output(video_file, output_video_file)
+	copy_audio_and_metadata_to_output(video_file, output_video_file)
 
 if __name__ == "__main__":
 	# Command line options
