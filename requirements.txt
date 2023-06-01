@@ -4,4 +4,3 @@ tqdm
 zbarlight
 opencv-python
 moviepy
-ffmpeg-python
